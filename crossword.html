@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lean Crossword — Escape Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Caveat:wght@600&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#F0EDE4;min-height:100vh;padding:1.5rem;font-family:'DM Sans',sans-serif;}
+.cw-title{text-align:center;margin-bottom:1.5rem;}
+.cw-title h1{font-family:'Playfair Display',serif;font-size:34px;color:#1a1a1a;font-weight:700;}
+.cw-title .sub{font-family:'Caveat',cursive;font-size:26px;color:#1a1a1a;}
+.cw-body{display:flex;gap:2rem;align-items:flex-start;flex-wrap:wrap;}
+.grid-area{position:relative;flex:0 0 auto;}
+svg.grid-svg{display:block;}
+.cell-inputs{position:absolute;top:0;left:0;pointer-events:none;}
+.cell-inp-wrap{position:absolute;pointer-events:all;}
+.cell-inp-wrap input{width:100%;height:100%;border:none;background:transparent;text-align:center;font-family:'DM Mono',monospace;font-size:17px;font-weight:500;color:#1a1a1a;text-transform:uppercase;outline:none;cursor:text;caret-color:#D85A30;padding:0;}
+.cell-inp-wrap.focused{background:rgba(216,90,48,0.13);border-radius:2px;}
+.cell-inp-wrap.highlighted{background:rgba(216,90,48,0.06);}
+.cell-inp-wrap.correct{background:rgba(29,158,117,0.18);}
+.cell-inp-wrap.wrong{background:rgba(226,75,74,0.2);}
+.cell-inp-wrap.lean-hl{background:rgba(239,159,39,0.25);}
+.clues-area{flex:1;min-width:200px;}
+.clues-col{margin-bottom:1.1rem;}
+.clue-heading{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:#1a1a1a;border-bottom:1.5px solid #1a1a1a;padding-bottom:3px;margin-bottom:7px;}
+.clue-item{display:flex;gap:7px;font-size:12.5px;color:#444;padding:4px 0;border-bottom:0.5px solid #D3D1C7;cursor:pointer;line-height:1.4;}
+.clue-item:hover{color:#1a1a1a;}
+.clue-item.active{color:#D85A30;font-weight:500;}
+.clue-item.done{color:#1D9E75;}
+.clue-num{font-family:'DM Mono',monospace;font-size:11px;font-weight:500;color:#D85A30;min-width:16px;}
+.clue-item.done .clue-num{color:#1D9E75;}
+.lean-reveal{margin-top:10px;padding:9px 13px;background:#FAEEDA;border-left:3px solid #EF9F27;font-size:11.5px;font-family:'DM Mono',monospace;color:#633806;line-height:1.5;display:none;}
+.actions{display:flex;gap:8px;margin-top:1rem;flex-wrap:wrap;}
+.btn{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;padding:6px 13px;border:1px solid #1a1a1a;background:transparent;color:#1a1a1a;cursor:pointer;text-transform:uppercase;}
+.btn:hover{background:#1a1a1a;color:#F0EDE4;}
+.btn.primary{background:#D85A30;border-color:#D85A30;color:#fff;}
+.btn.primary:hover{background:#993C1D;border-color:#993C1D;}
+.status{margin-top:7px;font-family:'DM Mono',monospace;font-size:11px;color:#888;letter-spacing:1px;min-height:16px;}
+.status.win{color:#1D9E75;font-size:12px;font-weight:500;}
+</style>
+</head>
+<body>
+
+<div class="cw-title">
+  <h1>Lean Crossword</h1>
+  <div>· <span class="sub">escape game</span> ·</div>
+</div>
+
+<div class="cw-body">
+  <div class="grid-area">
+    <svg class="grid-svg" id="gridSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="cell-inputs" id="cellInputs"></div>
+  </div>
+  <div class="clues-area">
+    <div class="clues-col">
+      <div class="clue-heading">Across</div>
+      <div id="cluesAcross"></div>
+    </div>
+    <div class="clues-col">
+      <div class="clue-heading">Down</div>
+      <div id="cluesDown"></div>
+    </div>
+    <div class="lean-reveal" id="leanReveal">Hidden word: <strong>LEAN</strong> — the philosophy behind it all.</div>
+    <div class="actions">
+      <button class="btn primary" onclick="checkAll()">Check</button>
+      <button class="btn" onclick="revealAll()">Reveal</button>
+      <button class="btn" onclick="resetAll()">Reset</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+</div>
+
+<script>
+const CS=44, GAP=2, T=CS+GAP;
+
+const words=[
+  {id:'5s',         word:'5S',         row:0, col:2, dir:'D', num:1,    clue:'Place for everything & everything in its place.', hidden:false},
+  {id:'kaizen',     word:'KAIZEN',     row:0, col:3, dir:'D', num:2,    clue:'Daily tweaks that quietly make messes smaller.', hidden:false},
+  {id:'safety',     word:'SAFETY',     row:1, col:2, dir:'A', num:3,    clue:'The invisible seatbelt for everyday tasks.', hidden:false},
+  {id:'kamishibai', word:'KAMISHIBAI', row:2, col:0, dir:'A', num:4,    clue:'A simple check that keeps standards from slipping.', hidden:false},
+  {id:'kanban',     word:'KANBAN',     row:1, col:8, dir:'D', num:5,    clue:'A traffic light for tasks, not cars.', hidden:false},
+  {id:'quality',    word:'QUALITY',    row:4, col:6, dir:'D', num:6,    clue:"Making sure what leaves here won't cause headaches later.", hidden:false},
+  {id:'muda',       word:'MUDA',       row:5, col:5, dir:'A', num:7,    clue:'If it adds no value, it has no place.', hidden:false},
+  {id:'lean',       word:'LEAN',       row:6, col:4, dir:'A', num:null, clue:null, hidden:true},
+  {id:'kpi',        word:'KPI',        row:8, col:4, dir:'A', num:8,    clue:'The numeric mirror showing how good we look.', hidden:false},
+];
+
+const solMap={}, leanSet=new Set(), numMap={};
+words.forEach(w=>{
+  w.word.split('').forEach((ch,i)=>{
+    const r=w.dir==='A'?w.row:w.row+i, c=w.dir==='A'?w.col+i:w.col, key=`${r},${c}`;
+    solMap[key]=ch;
+    if(w.hidden) leanSet.add(key);
+  });
+  if(w.num!==null){ const k=`${w.row},${w.col}`; if(!numMap[k]) numMap[k]=w.num; }
+});
+
+const cells=Object.keys(solMap).map(k=>{const[r,c]=k.split(',').map(Number);return{r,c};});
+const maxR=Math.max(...cells.map(x=>x.r)), maxC=Math.max(...cells.map(x=>x.c));
+const svgW=(maxC+2)*T, svgH=(maxR+2)*T;
+const svg=document.getElementById('gridSvg');
+svg.setAttribute('width',svgW); svg.setAttribute('height',svgH);
+
+Object.keys(solMap).forEach(key=>{
+  const[r,c]=key.split(',').map(Number), x=GAP+c*T, y=GAP+r*T;
+  const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  rect.setAttribute('x',x); rect.setAttribute('y',y);
+  rect.setAttribute('width',CS); rect.setAttribute('height',CS);
+  rect.setAttribute('fill','#FFFFFF'); rect.setAttribute('stroke','#1a1a1a'); rect.setAttribute('stroke-width','1.5');
+  svg.appendChild(rect);
+  if(numMap[key]!==undefined){
+    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x',x+3); t.setAttribute('y',y+11);
+    t.setAttribute('font-size','9'); t.setAttribute('font-family','DM Mono,monospace'); t.setAttribute('fill','#999');
+    t.textContent=numMap[key]; svg.appendChild(t);
+  }
+});
+
+const overlay=document.getElementById('cellInputs'), inputsMap={};
+Object.keys(solMap).forEach(key=>{
+  const[r,c]=key.split(',').map(Number), x=GAP+c*T, y=GAP+r*T;
+  const wrap=document.createElement('div');
+  wrap.className='cell-inp-wrap';
+  if(leanSet.has(key)) wrap.classList.add('lean-hl');
+  wrap.style.cssText=`left:${x}px;top:${y}px;width:${CS}px;height:${CS}px;`;
+  const inp=document.createElement('input');
+  inp.maxLength=1; inp.dataset.r=r; inp.dataset.c=c;
+  inp.setAttribute('autocomplete','off'); inp.setAttribute('spellcheck','false');
+  inp.addEventListener('focus',()=>onFocus(r,c,wrap));
+  inp.addEventListener('blur',()=>wrap.classList.remove('focused'));
+  inp.addEventListener('keydown',e=>onKey(e,r,c));
+  inp.addEventListener('input',e=>onInput(e,r,c));
+  wrap.appendChild(inp); overlay.appendChild(wrap); inputsMap[key]=inp;
+});
+
+let curDir='A', curWord=null;
+
+function getWordAt(r,c,dir){
+  return words.find(w=>{
+    if(w.dir!==dir) return false;
+    if(dir==='A') return w.row===r&&c>=w.col&&c<w.col+w.word.length;
+    return w.col===c&&r>=w.row&&r<w.row+w.word.length;
+  })||null;
+}
+
+function onFocus(r,c,wrap){
+  clearHL();
+  let w=getWordAt(r,c,curDir);
+  if(!w){curDir=curDir==='A'?'D':'A'; w=getWordAt(r,c,curDir);}
+  curWord=w; wrap.classList.add('focused');
+  if(w){hlWord(w); hlClue(w);}
+}
+
+function clearHL(){
+  document.querySelectorAll('.cell-inp-wrap').forEach(el=>el.classList.remove('highlighted','focused'));
+  document.querySelectorAll('.clue-item').forEach(el=>el.classList.remove('active'));
+}
+
+function hlWord(w){
+  w.word.split('').forEach((_,i)=>{
+    const r=w.dir==='A'?w.row:w.row+i, c=w.dir==='A'?w.col+i:w.col;
+    const el=inputsMap[`${r},${c}`]?.parentElement;
+    if(el&&!el.classList.contains('focused')) el.classList.add('highlighted');
+  });
+}
+
+function hlClue(w){
+  if(!w||!w.num) return;
+  const el=document.querySelector(`.clue-item[data-num="${w.num}"][data-dir="${w.dir}"]`);
+  if(el) el.classList.add('active');
+}
+
+function getCellIdx(r,c){
+  if(!curWord) return -1;
+  return curWord.word.split('').findIndex((_,i)=>{
+    const wr=curWord.dir==='A'?curWord.row:curWord.row+i;
+    const wc=curWord.dir==='A'?curWord.col+i:curWord.col;
+    return wr===r&&wc===c;
+  });
+}
+
+function getPrev(r,c){
+  const i=getCellIdx(r,c); if(i<=0) return null;
+  const pi=i-1, pr=curWord.dir==='A'?curWord.row:curWord.row+pi, pc=curWord.dir==='A'?curWord.col+pi:curWord.col;
+  return inputsMap[`${pr},${pc}`]||null;
+}
+
+function getNext(r,c){
+  if(!curWord) return null;
+  const i=getCellIdx(r,c); if(i<0||i>=curWord.word.length-1) return null;
+  const ni=i+1, nr=curWord.dir==='A'?curWord.row:curWord.row+ni, nc=curWord.dir==='A'?curWord.col+ni:curWord.col;
+  return inputsMap[`${nr},${nc}`]||null;
+}
+
+function onKey(e,r,c){
+  if(e.key==='Backspace'){
+    const inp=inputsMap[`${r},${c}`];
+    if(!inp.value){const p=getPrev(r,c); if(p){p.focus();p.value='';}} return;
+  }
+  if(e.key==='Tab'){e.preventDefault(); cycleWord(e.shiftKey); return;}
+  const mv={ArrowRight:[0,1,'A'],ArrowLeft:[0,-1,'A'],ArrowDown:[1,0,'D'],ArrowUp:[-1,0,'D']};
+  if(mv[e.key]){e.preventDefault(); const[dr,dc,d]=mv[e.key]; curDir=d; inputsMap[`${r+dr},${c+dc}`]?.focus();}
+}
+
+function onInput(e,r,c){
+  const inp=e.target, v=inp.value.replace(/[^a-zA-Z0-9]/g,'').toUpperCase().slice(-1);
+  inp.value=v; inp.parentElement.classList.remove('correct','wrong');
+  if(v){const n=getNext(r,c); if(n) n.focus();}
+  checkLean();
+}
+
+function cycleWord(rev){
+  const vis=words.filter(w=>!w.hidden);
+  if(!curWord){focusWord(vis[0]);return;}
+  let idx=vis.indexOf(curWord);
+  idx=rev?(idx-1+vis.length)%vis.length:(idx+1)%vis.length;
+  focusWord(vis[idx]);
+}
+
+function focusWord(w){curDir=w.dir; inputsMap[`${w.row},${w.col}`]?.focus();}
+
+function checkLean(){
+  const lw=words.find(w=>w.hidden); if(!lw) return;
+  const ok=lw.word.split('').every((ch,i)=>{
+    const r=lw.dir==='A'?lw.row:lw.row+i, c=lw.dir==='A'?lw.col+i:lw.col;
+    return (inputsMap[`${r},${c}`]?.value||'')===ch;
+  });
+  document.getElementById('leanReveal').style.display=ok?'block':'none';
+}
+
+function checkAll(){
+  let allOk=true, any=false;
+  words.forEach(w=>{
+    w.word.split('').forEach((ch,i)=>{
+      const r=w.dir==='A'?w.row:w.row+i, c=w.dir==='A'?w.col+i:w.col;
+      const inp=inputsMap[`${r},${c}`]; if(!inp) return;
+      const v=inp.value; if(!v){allOk=false;return;} any=true;
+      const el=inp.parentElement; el.classList.remove('correct','wrong','lean-hl');
+      v===ch?el.classList.add('correct'):(el.classList.add('wrong'),allOk=false);
+    });
+  });
+  const st=document.getElementById('status');
+  if(allOk&&any){st.textContent='✓ All correct!';st.className='status win';document.querySelectorAll('.clue-item').forEach(el=>el.classList.add('done'));}
+  else{st.textContent='Some answers need correction.';st.className='status';}
+  checkLean();
+}
+
+function revealAll(){
+  Object.keys(solMap).forEach(key=>{
+    const inp=inputsMap[key]; if(!inp) return;
+    inp.value=solMap[key];
+    const el=inp.parentElement; el.classList.remove('wrong','lean-hl'); el.classList.add('correct');
+  });
+  document.getElementById('status').textContent='Answers revealed.';
+  document.getElementById('leanReveal').style.display='block';
+}
+
+function resetAll(){
+  Object.values(inputsMap).forEach(inp=>{
+    inp.value=''; const el=inp.parentElement; el.classList.remove('correct','wrong');
+    if(leanSet.has(`${inp.dataset.r},${inp.dataset.c}`)) el.classList.add('lean-hl');
+  });
+  document.getElementById('status').textContent=''; document.getElementById('status').className='status';
+  document.getElementById('leanReveal').style.display='none';
+  document.querySelectorAll('.clue-item').forEach(el=>el.classList.remove('done','active'));
+}
+
+const aDiv=document.getElementById('cluesAcross'), dDiv=document.getElementById('cluesDown');
+words.filter(w=>!w.hidden&&w.dir==='A').sort((a,b)=>a.num-b.num).forEach(w=>{
+  const d=document.createElement('div'); d.className='clue-item'; d.dataset.num=w.num; d.dataset.dir='A';
+  d.innerHTML=`<span class="clue-num">${w.num}.</span><span>${w.clue}</span>`;
+  d.addEventListener('click',()=>focusWord(w)); aDiv.appendChild(d);
+});
+words.filter(w=>!w.hidden&&w.dir==='D').sort((a,b)=>a.num-b.num).forEach(w=>{
+  const d=document.createElement('div'); d.className='clue-item'; d.dataset.num=w.num; d.dataset.dir='D';
+  d.innerHTML=`<span class="clue-num">${w.num}.</span><span>${w.clue}</span>`;
+  d.addEventListener('click',()=>focusWord(w)); dDiv.appendChild(d);
+});
+</script>
+</body>
+</html>
